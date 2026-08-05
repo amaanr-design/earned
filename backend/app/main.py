@@ -9,14 +9,13 @@ from .db import make_connection_factory
 from .services import ItemService, item_service_factory
 
 
-def register_services(registry: svcs.Registry) -> None:
+async def register_services(app: FastAPI, registry: svcs.Registry):
     registry.register_factory(sqlite3.Connection, make_connection_factory)
     registry.register_factory(ItemService, item_service_factory)
+    yield
 
 
-app = FastAPI(title="Earned API", lifespan=svcs_lifespan)
-app.state.registry = svcs.Registry()
-register_services(app.state.registry)
+app = FastAPI(title="Earned API", lifespan=svcs_lifespan(register_services))
 
 app.add_middleware(
     CORSMiddleware,
