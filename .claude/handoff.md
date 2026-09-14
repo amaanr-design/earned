@@ -1,0 +1,147 @@
+# Earned — Handoff
+
+Update the "Last session" block at the end of every session. Keep it short —
+this is a pointer, not a log. Full reasoning lives in `decisions.md`.
+
+---
+
+## Where things stand
+
+**Phase 0 — scaffold:** done. React + Vite PWA / FastAPI / SQLite / svcs.
+Repo private on GitHub, git identity configured locally.
+
+**Phase 1 — spec interrogation:** done. All entity, selection, lifecycle, and
+API contract decisions locked in `decisions.md`. Nothing here is provisional
+unless marked OPEN in that file.
+
+**Card + receipt copy:** done. All 21 cases written and reviewed in
+`copy-spec.md`. Governing rules, skeleton, and instrumentation locked there.
+
+**Spec documents:** done. `spec/spec.md` and `spec/api.md` written — Phase 1's
+stated output, two documents as planned. Pure transcription; no new design.
+
+**Next:** tickets. T1–T6 confirmed against the spec with acceptance criteria
+attached, then week-one build.
+
+## Load-bearing decisions (see decisions.md for full reasoning)
+
+- Commitment holds total effort; card is a time-bounded slice
+- Tap A = session logged, Tap B = commitment closed
+- `remaining_effort` stored, **never** returned by API or rendered — this is
+  a hard rule, not a style preference
+- Selection is deterministic: `score = (effort_remaining / days_remaining) *
+  stakes_multiplier`. No LLM in the selection path, ever.
+- Categories: `coursework`, `marc_lessons`, `build` — closed enum, exactly 3
+- Stakes: `high` / `ordinary` — exactly 2 levels
+- Slice window: floor 25 min, ceiling 120 min, sized to evening-start field
+- Cards persisted at offer time, not computed on read
+- Outcome buckets: `never_touched`, `not_now`, `completed`,
+  `abandoned_unknown`, `done_no_start`
+- No warnings, no scolds, no deficit figures anywhere in the UI, ever
+- Multi-user schema from day one (user_id everywhere), auth deferred to v2
+- Fitness deferred to v1.5 via count/recurrence model — schema fields
+  (`target_count`, recurrence) reserved now, feature built later
+- Copy is governed by two rules only (`copy-spec.md` §1): fact-not-evaluation,
+  and scope. Everything else about wording is downstream of those.
+- Copy generated at card-write time, 3s timeout, fallback text stored
+  permanently on timeout. Read is always a database read.
+- Pre-commit estimates the **work**, not the leisure — a work estimate has a
+  measurable actual
+- `blueprint.md` is superseded by `decisions.md` and `copy-spec.md` where they
+  conflict; it carries a precedence header saying so
+
+## Open items — do not resolve by guessing
+
+The full list, numbered and with blocking status, is `spec/spec.md` §15 —
+19 items, 13 of which block week-one code. Headlines:
+
+- **Deliberately unset, still unset:** neglect-nudge multiplier · deadline-clause
+  window `N` · quiet-reason trigger thresholds · instrumentation baseline (starts
+  after the first full week without a code change)
+- **Newly surfaced by the spec, and blocking:** `days_remaining` on the deadline
+  day (divides by zero) · a commitment whose effort runs out without Tap B
+  (completion by exhaustion through the back door) · score ties · how a reward
+  attaches to tonight · what triggers an offer in week one with no push · what
+  counts against the 3/day cap · where Tap B is tapped · whether
+  `done_no_start` banks effort · the slice-sizing function · re-offer size and
+  interval · quiet-reason precedence
+- Five of the blockers land inside ticket T3 alone — that ticket is bigger than
+  the plan's sketch suggests
+- **Target date for "a real Tuesday" — still not set. Pick it.** Oldest open
+  item in the project.
+
+## Corrections carried into the tickets session
+
+- **T3** in `phased-development-plan.md` still names the old selection rule
+  ("nearest deadline × fits window × category overdue"). Superseded by
+  `stakes × urgency`. Category plays no part in selection.
+- **T4** names Flash. `copy-spec.md` deliberately names no product — "the copy
+  model", binding in build config. The product name does not belong in a ticket.
+
+## Reward list (for copy work)
+
+Pro Clubs w/ Michael & Braden · Overwatch w/ Shaan · single-player gaming
+night · movie night · night out w/ family or friends. See `decisions.md` §
+Reward list for the social-vs-solo copy note.
+
+---
+
+## Last session
+
+**Date:** 2026-08-13
+**Did:** Closed Phase 1 spec interrogation (entities, selection algorithm,
+lifecycle, API contract). Wrote `decisions.md`. Sent Marc an 8-day recap.
+Folded in Marc's counted-commitment idea for fitness.
+**Next session should:** Start card + receipt copy in a fresh chat, using
+`decisions.md` + `blueprint.md` as input. Update this file afterward with
+whatever copy patterns get locked.
+
+## Last session
+
+**Date:** 2026-08-18
+**Did:** Card + receipt copy, start to finish. `copy-spec.md` written, reviewed
+case by case, and locked — 12 sections, all 21 cases. Two governing rules
+(fact-not-evaluation; scope). Skeleton: every slot's presence decided
+deterministically, copy model only fills what it is handed; titles and rewards
+verbatim. Boundary slot (`evening_start`) added as a true non-invented reward so
+week-one cards aren't to-do items — once a day, first card only. Receipt body is
+a list with no count preamble; zero day is the same frame with an empty list and
+no compensating line. Earned question moved to the frozen receipt, retrospective,
+dismissible, `seen_dismissed` stored distinctly. Pre-commit resolved to estimate
+work, not leisure. Copy generated at card-write time with a 3s timeout and
+permanent fallback. New instrumentation section: quiet-reason counts, wallpaper
+trigger, fallback rate, and an explicit guard against treating opens as an
+engagement metric. `blueprint.md` given a precedence header rather than being
+amended. Spec is model-agnostic throughout — "the copy model", not a product
+name.
+**Next session should:** Write the spec document proper. `copy-spec.md` feeds T4
+(card copy) and T5 (frontend) directly; its rejected-variants table is most of
+the card-copy eval from blueprint §13 already written. Fallback template is
+built first — the copy model has to beat it.
+**Open:** nothing blocks code. Trigger thresholds and the deadline window `N`
+are calibrate-later. The real Tuesday is still unpicked, and that is now the
+oldest open item in the project.
+
+## Last session
+
+**Date:** 2026-08-20
+**Did:** `spec/spec.md` and `spec/api.md`, transcribed from `decisions.md` and
+`copy-spec.md`. Spec: seven tables with field-by-field notes and running SQLite
+DDL (`effort_remaining` as a generated stored column, so it cannot drift and
+cannot be hand-maintained wrong), constants module, selection, card lifecycle,
+copy pipeline, receipt rules, instrumentation, and 15 system-level guardrail
+assertions. API: 13 week-one endpoints with request/response shapes and numbered
+acceptance criteria each, plus seven global ones. Every rendered string in both
+documents traces verbatim to `copy-spec.md`. Two audit sections added on
+purpose — §14 lists all ten places the spec put something into words the sources
+did not use, and §15 lists the open items with blocking status, so neither
+category can be inherited silently.
+**Next session should:** Tickets. Confirm T1–T6 against the spec and attach
+acceptance criteria — the structure is already sketched in the plan, so this is
+confirmation, not invention. Carry the T3 and T4 corrections above. Note that
+five week-one blockers sit inside T3, which may want splitting.
+**Open:** the previous entry's "nothing blocks code" no longer holds. Thirteen
+open items block week-one code — mostly small arithmetic and lifecycle edges the
+design documents did not need to reach, but the selector cannot be written until
+the `days_remaining` and exhausted-effort ones are settled. Still no real
+Tuesday.
