@@ -564,6 +564,14 @@ which card gets offered, so none can be quietly defaulted.
 > fractional? floor of one?) and the deadline-day behaviour are unspecified. This
 > is the single highest-impact unset value in the selector: it decides what
 > happens on precisely the days that matter most.
+>
+> **No longer theoretical.** The manual add-commitment form (§11.2, T1) has no
+> min-date guard on `deadline` — deliberately: a past deadline is a selection-time
+> problem, not an intake-time one, and blocking it at the form is exactly the kind
+> of thing that quietly narrows a decision that belongs to the scorer. This means
+> a commitment with `days_remaining ≤ 0` can exist in the database as soon as T1
+> ships, before the selector (T3) is built. Whoever builds T3 must decide this
+> before the selector runs against real data, not discover it from a crash.
 
 > **OPEN-4 — exhausted effort without Tap B.** A commitment whose
 > `effort_remaining` reaches 0 scores 0 and will never be offered again — which
