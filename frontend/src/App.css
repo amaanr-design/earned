@@ -7,3 +7,38 @@
   text-align: center;
   font-family: system-ui, sans-serif;
 }
+
+.add-commitment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 320px;
+  text-align: left;
+}
+
+.add-commitment-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.add-commitment-form input,
+.add-commitment-form select {
+  font-size: 1rem;
+  padding: 0.4rem;
+}
+
+.add-commitment-form button {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  font-size: 1rem;
+}
+
+.form-error {
+  color: #b00020;
+}
+
+.form-confirmation {
+  color: #1a7f37;
+}
