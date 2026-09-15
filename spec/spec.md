@@ -631,10 +631,21 @@ offers nothing; **ceiling 120 minutes**.
 finished (offer 120, consistently do 40 → start offering ~45). The 120 ceiling
 stays as a hard cap for the rare genuinely clear afternoon.
 
-> **OPEN-12 — the sizing function.** The bounds are locked; the function from
-> (window, effort remaining, calibration history) to an offered slice is not
-> written down. Week one also has no calibration history to shrink toward, so
-> week one needs a starting rule that is not the calibration rule.
+> **OPEN-12 — the sizing function. [RESOLVED, week-one starting rule only.]**
+> The bounds are locked; the function from (window, effort remaining,
+> calibration history) to an offered slice was not written down, and week one
+> has no calibration history to shrink toward, so it needed a starting rule that
+> is not the calibration rule.
+>
+> **Decision: `duration = min(45, window_minutes, effort_remaining_minutes)`,
+> floored at 25 — below 25 the app offers nothing (`window_under_floor`), never
+> rounded up.** The 45-minute anchor is not arbitrary: it's the number
+> `decisions.md` §3 itself names as where calibration eventually converges
+> ("offer 120, consistently do 40 → start offering ~45"). Starting there
+> answers the question calibration would otherwise spend weeks walking toward,
+> rather than starting at the 120 ceiling and grinding down. This is the
+> week-one starting rule only — once calibration history exists, it supersedes
+> this constant, it does not amend it. Implemented in `backend/app/cards.py`.
 
 ### 8.3 Outcome buckets **[LOCKED]** `decisions.md` §4
 
@@ -693,10 +704,25 @@ Repeated not-nows **do** feed learning — but only into *how the app offers*
 (smaller slices, earlier in the day). They must never surface as anything
 resembling a tally of refusals. That is L4 in a new unit.
 
-> **OPEN-13 — the re-offer rule.** How much smaller the re-offer is, and how long
-> after the decline it may arrive, are both unspecified. With no minimum interval
-> the next card can arrive immediately, which is the nagging the source explicitly
-> rejects — so this gap has a direction, and week one needs some value.
+> **OPEN-13 — the re-offer rule. [RESOLVED.]** How much smaller the re-offer is,
+> and how long after the decline it may arrive, were both unspecified. With no
+> minimum interval the next card could arrive immediately, which is the nagging
+> the source explicitly rejects — so this gap had a direction, and week one
+> needed some value.
+>
+> **Decision: no cooldown; the next `GET /api/card` (whenever the user next
+> opens the app — there is no push to arrive uninvited) immediately offers the
+> same commitment at half its just-declined duration, floor-checked the same
+> way a fresh offer is.** This is not nagging because the app never initiates —
+> it only ever responds to the user opening it, so "immediate" means "next time
+> you look," not "moments later on a timer." If the halved duration falls below
+> 25 minutes, the response is `after_not_now` (per AC-CARD-12 in `api.md`), not
+> a floor-clamped 25-minute repeat. **In practice, given the 45-minute anchor
+> (OPEN-12) and the 25-minute floor, this exhausts after exactly one decline for
+> any freshly-anchored offer** — 45 // 2 = 22, already under floor — so
+> "continues down on repeated declines" only has room to operate when the
+> original offer was smaller than 50 minutes (a tight window or a small
+> `effort_remaining` produced it). Implemented in `backend/app/cards.py`.
 
 ### 8.6 The daily cap **[LOCKED, with a gap]** `decisions.md` §3
 
@@ -709,11 +735,20 @@ are right — enough window left for a real slice, and something worth surfacing
 Finish at 4pm with four hours before evening → another card. Finish at 7:40pm →
 nothing; the window is under the floor and the app goes quiet for the night.
 
-> **OPEN-8 — what counts against the cap, and against which day.** Whether a
-> `not_now` card, a stale `never_touched` card, or a smaller re-offer of the same
-> commitment each consume one of the three is unspecified — and so is whether
-> "day" here means the rollover day (§2) or the calendar day. Three declines
-> ending the day is a very different app from three *offers* ending it.
+> **OPEN-8 — what counts against the cap, and against which day. [RESOLVED.]**
+> Whether a `not_now` card, a stale `never_touched` card, or a smaller re-offer
+> of the same commitment each consumed one of the three was unspecified — and so
+> was whether "day" here meant the rollover day (§2) or the calendar day. Three
+> declines ending the day is a very different app from three *offers* ending it.
+>
+> **Decision: every `card` row with today's (rollover-based) `offer_date`
+> counts, regardless of outcome** — offered, declined, stale, or a smaller
+> re-offer of the same commitment, all count once each. The day boundary is the
+> rollover day, matching every other day-scoped rule in this spec (D6's own
+> reasoning against two competing boundaries). This reading was already directly
+> supported, not invented: `copy-spec.md` §9's own trigger table says "the cap
+> can be reached with three cards offered and all three declined." Implemented
+> in `backend/app/cards.py`.
 
 ### 8.7 No warnings, ever **[LOCKED]** `decisions.md` §4
 
@@ -876,10 +911,32 @@ Notes that must survive into the tests:
   operationally different: the same commitment can return in a smaller slice, so
   the day is not over. Hence *right now*, not *tonight*.
 
-> **OPEN-14 — reason precedence.** More than one reason can be true at once
-> (evening started *and* everything closed; cap reached *and* window under floor).
-> No precedence order is written down, and the order decides which sentence a user
-> actually sees.
+**`everything_closed` vs `nothing_due`, decided (not previously written down
+anywhere as a rule).** Both describe zero open commitments, but for different
+reasons, and conflating them either congratulates an empty week or scolds a
+week that genuinely had nothing to do. **`everything_closed` fires only if a
+commitment was closed (Tap B) within the current week** (Sunday-based, matching
+the intake cadence); otherwise, with zero open commitments, it's `nothing_due` —
+including a returning user who never did intake, who must not be told the
+evening is theirs to enjoy for a week that never happened. "Current week" reuses
+OPEN-15/16's own admission that "recently" needs a definition and takes the
+plainest one available; it is itself an open detail (calendar week vs.
+rollover-aligned week) rather than a new numbered item, since it was surfaced
+and settled in the same conversation. Implemented in `backend/app/cards.py`.
+
+> **OPEN-14 — reason precedence. [RESOLVED.]** More than one reason can be true
+> at once (evening started *and* everything closed; cap reached *and* window
+> under floor). No precedence order was written down, and the order decides
+> which sentence a user actually sees.
+>
+> **Decision: `cap_reached` is checked first, before any time-window or
+> commitment-state check.** Reaching the three-card cap is reported even if the
+> evening has also since started or nothing else is due. The rest of the order,
+> as implemented: time-window checks (`evening_started` / `window_under_floor`)
+> next, then commitment-state checks (`everything_closed` / `nothing_due`), with
+> `after_not_now` only reachable past all of those, as a property of the
+> specific commitment just declined rather than a global state. Implemented in
+> `backend/app/cards.py`.
 
 ### 10.2 Receipt timing **[LOCKED]** `decisions.md` §5
 
@@ -1080,6 +1137,9 @@ system-level ones.
 | G13 | Quiet-screen strings match §10.1 **exactly**, character for character | `copy-spec.md` §5 |
 | G14 | No card is offered with `duration_minutes` outside 25–120 | `decisions.md` §3 |
 | G15 | Every offered card resolves into exactly one outcome bucket; none stays null past the rollover except `abandoned_unknown` awaiting its ask | `decisions.md` §4 |
+| G17 | A live unresolved `offered` card whose window no longer fits closes to `never_touched` before any new card is considered; a `started` card is returned regardless of the clock | OPEN-7 territory / AC-CARD-11 — `backend/app/cards.py` |
+| G18 | Every card row for today's rollover day counts toward `DAILY_CARD_CAP`, regardless of outcome; the cap is checked before any other quiet reason | OPEN-8, OPEN-14, resolved — `backend/app/cards.py` |
+| G19 | A re-offer after `not_now` halves the previously declined duration for the *same* commitment; it never falls back to a different commitment, and a halved value under the floor yields `after_not_now` (AC-CARD-12), never `window_under_floor` | OPEN-13, resolved — `backend/app/cards.py` |
 
 The eval set for card copy starts from `copy-spec.md` §10 — the rejected-variants
 table is most of it already written, with the pass/fail verdict and the reason
@@ -1104,6 +1164,7 @@ be checked rather than inherited.
 | D8 | Pre-commit stored on the card row rather than a separate log | The three numbers describe one card |
 | D9 | UTC storage, local-timezone arithmetic | `user.timezone` exists and every rule is stated in local terms |
 | D10 | `reward.kind` and `reward.timing` as two columns rather than one | The source list is typed along two independent axes; the copy note turns on the second and would be lost if they were flattened |
+| D11 | `everything_closed` requires a Tap B *within the current Sunday-based week*; otherwise zero open commitments reads as `nothing_due` | Neither reason's trigger condition was written down anywhere; conflating them congratulates an empty week for a returning user who never did intake |
 
 ---
 
@@ -1122,24 +1183,25 @@ documents; the rest are gaps this transcription hit.
 | **OPEN-5** | Tie-break for equal scores | **T3, week one** | Gap. A deterministic selector needs a total order |
 | **OPEN-6** | How a reward attaches to tonight, and where its time comes from | **T4, week one** | Gap. Affects whether the central bet is on screen at all |
 | **OPEN-7** | What triggers a card offer in week one, given no push and no heartbeat | **T3/T5, week one** | Gap. Weakens the persist-on-offer learning signal |
-| **OPEN-8** | What counts against the 3/day cap, and which day boundary it uses | **T3, week one** | Gap |
+| **OPEN-8** | What counts against the 3/day cap, and which day boundary it uses | ~~T3, week one~~ | **RESOLVED**, this session. Every card row for today's rollover day counts, regardless of outcome. See §8.6 |
 | **OPEN-9** | Where Tap B is tapped | **T5, week one** | Gap. Two taps are specified; only three buttons exist |
 | **OPEN-10** | `recurrence` column shape | Deferred with the feature | Reserved deliberately (`decisions.md` §6) |
 | **OPEN-11** | Whether `done_no_start` banks effort | **T1/T3, week one** | Gap. Untracked, it inflates urgency on the hardest-worked commitments |
-| **OPEN-12** | Slice-sizing function, and the week-one starting rule before calibration exists | **T3, week one** | Gap. Bounds are locked; the function is not |
-| **OPEN-13** | Re-offer size reduction and minimum interval after a not-now | **T3, week one** | Gap with a direction — no interval means nagging, which is explicitly rejected |
-| **OPEN-14** | Quiet-reason precedence when several are true | **T3/T5, week one** | Gap |
+| **OPEN-12** | Slice-sizing function, and the week-one starting rule before calibration exists | ~~T3, week one~~ | **RESOLVED**, this session, week-one starting rule only. `min(45, window, effort_remaining)`, floored at 25. See §8.2 |
+| **OPEN-13** | Re-offer size reduction and minimum interval after a not-now | ~~T3, week one~~ | **RESOLVED**, this session. Immediate, halved from the last declined duration, no cooldown. See §8.5 |
+| **OPEN-14** | Quiet-reason precedence when several are true | ~~T3/T5, week one~~ | **RESOLVED**, this session. Cap checked first. See §10.1 |
 | **OPEN-15** | Quiet-reason trigger thresholds | Weekly review, later | Deliberately provisional (`copy-spec.md` §12) |
 | **OPEN-16** | Instrumentation baseline start date | Later | Begins after the first full week without a code change; git says when |
 | **OPEN-17** | Whether `effort_minutes` (total) may be returned alongside anything from which remaining is reconstructable | **T1/T5, week one** | Gap. See `api.md` §2 — the conservative reading is specced there and marked |
 | **OPEN-18** | The real Tuesday | Everything | Still unset. The oldest open item in the project (`claude/handoff.md`) |
 | **OPEN-19** | Whether the pre-commit is skippable | T5, week one | Gap. The column is nullable so a skip is representable; whether the UI offers one is unstated (`api.md` §5) |
 
-**Twelve of these still block week-one code:** OPEN-4, 5, 6, 7, 8, 9, 11, 12, 13,
-14, 17, 19 — four of them (4, 5, 12, 13) land inside ticket T3 alone. OPEN-2 is
-resolved (see above) and no longer in this count. That is the real shape of the
-tickets session. T3 is not one ticket's worth of decisions, and the four that are
-deliberately unset (1, 3, 15, 16) are not the ones holding anything up.
+**Eight of these still block week-one code:** OPEN-4, 5, 6, 7, 9, 11, 17, 19.
+OPEN-2, 8, 12, 13 and 14 are resolved (see above) and no longer in this count.
+Remaining T3 exposure is thinner than the tickets session found it — OPEN-4
+(exhausted effort with no Tap B) and OPEN-5 (ties) are what's left inside T3
+itself. The four that are deliberately unset (1, 3, 15, 16) are not the ones
+holding anything up.
 
 ---
 

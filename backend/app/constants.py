@@ -5,3 +5,22 @@ STAKES = ("high", "ordinary")
 STAKES_MULTIPLIER = {"high": 2, "ordinary": 1}
 
 ROLLOVER_HOUR = 4  # local hour; the day boundary is the rollover, not midnight
+
+SLICE_FLOOR_MINUTES = 25
+SLICE_CEILING_MINUTES = 120
+DAILY_CARD_CAP = 3
+
+# spec/spec.md OPEN-12 — week-one starting rule, no calibration history yet.
+# Anchored on the number decisions.md §3 says calibration eventually converges
+# toward ("offer 120, consistently do 40 -> start offering ~45"), rather than
+# starting at the ceiling and walking down. Confirmed with the user 2026-09.
+SLICE_STARTING_ANCHOR_MINUTES = 45
+
+QUIET_REASONS = (
+    "evening_started",
+    "window_under_floor",
+    "everything_closed",
+    "nothing_due",
+    "cap_reached",
+    "after_not_now",
+)

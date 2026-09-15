@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from svcs.fastapi import DepContainer, lifespan as svcs_lifespan
 
+from .cards import CardService, card_service_factory
+from .config import EARNED_USER_ID
 from .constants import CATEGORIES, STAKES
 from .db import make_connection_factory
 from .services import CommitmentService, commitment_service_factory
@@ -18,6 +20,7 @@ from .services import CommitmentService, commitment_service_factory
 async def register_services(app: FastAPI, registry: svcs.Registry):
     registry.register_factory(sqlite3.Connection, make_connection_factory)
     registry.register_factory(CommitmentService, commitment_service_factory)
+    registry.register_factory(CardService, card_service_factory)
     yield
 
 
@@ -95,3 +98,16 @@ async def create_commitments(
     ]
     created = commitment_service.create_commitments(items)
     return {"commitments": created}
+
+
+# spec/api.md §3 — GET /api/card
+
+
+@app.get("/api/card")
+async def get_card(services: DepContainer):
+    conn = await services.aget(sqlite3.Connection)
+    user = conn.execute(
+        "SELECT timezone, evening_start FROM user WHERE id = ?", (EARNED_USER_ID,)
+    ).fetchone()
+    card_service = await services.aget(CardService)
+    return card_service.get_or_offer(EARNED_USER_ID, user["timezone"], user["evening_start"])

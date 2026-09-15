@@ -40,6 +40,51 @@ CREATE TABLE IF NOT EXISTS commitment (
 
 CREATE INDEX IF NOT EXISTS idx_commitment_selection
     ON commitment(user_id, status, deadline);
+
+CREATE TABLE IF NOT EXISTS card (
+    id                      TEXT PRIMARY KEY,
+    user_id                 TEXT NOT NULL REFERENCES user(id),
+    commitment_id           TEXT NOT NULL REFERENCES commitment(id),
+    offered_at              TEXT NOT NULL,
+    offer_date              TEXT NOT NULL,              -- rollover-based local day
+    duration_minutes        INTEGER NOT NULL
+                            CHECK (duration_minutes BETWEEN 25 AND 120),
+    score_at_offer          REAL NOT NULL,
+    window_minutes_at_offer INTEGER NOT NULL,
+    copy_text               TEXT NOT NULL,
+    copy_source             TEXT NOT NULL CHECK (copy_source IN ('model','fallback')),
+    slot_boundary           INTEGER NOT NULL DEFAULT 0 CHECK (slot_boundary IN (0,1)),
+    slot_reward_id          TEXT,                       -- reward table not built yet (OPEN-6 deferred)
+    slot_deadline_days      INTEGER,
+    state                   TEXT NOT NULL DEFAULT 'offered'
+                            CHECK (state IN ('offered','started','resolved')),
+    outcome                 TEXT
+                            CHECK (outcome IS NULL OR outcome IN
+                                ('never_touched','not_now','completed',
+                                 'abandoned_unknown','done_no_start')),
+    started_at              TEXT,
+    precommit_minutes       INTEGER,
+    ended_at                TEXT,
+    elapsed_minutes         INTEGER,
+    resolution              TEXT
+                            CHECK (resolution IS NULL OR resolution IN
+                                ('confirmed','denied','dismissed')),
+    resolved_at             TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_card_day  ON card(user_id, offer_date);
+CREATE INDEX IF NOT EXISTS idx_card_open ON card(user_id, state);
+
+CREATE TABLE IF NOT EXISTS quiet_render (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES user(id),
+    reason      TEXT NOT NULL
+                CHECK (reason IN ('evening_started','window_under_floor',
+                                  'everything_closed','nothing_due',
+                                  'cap_reached','after_not_now')),
+    rendered_at TEXT NOT NULL,
+    local_date  TEXT NOT NULL
+);
 """
 
 
