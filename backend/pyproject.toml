@@ -10,3 +10,8 @@ dependencies = [
     "svcs>=26.1.0",
     "uvicorn[standard]>=0.52.1",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

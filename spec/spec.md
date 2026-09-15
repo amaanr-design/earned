@@ -558,20 +558,33 @@ hours nearer the deadline (that encodes the failure mode as a feature).
 These are arithmetic edges the locked documents do not reach. Each one changes
 which card gets offered, so none can be quietly defaulted.
 
-> **OPEN-2 — `days_remaining` at or past the deadline.** `urgency =
+> **OPEN-2 — `days_remaining` at or past the deadline. [RESOLVED]** `urgency =
 > effort_remaining / days_remaining` divides by zero on the deadline day itself
 > and goes negative after it. Both the definition of `days_remaining` (whole days?
-> fractional? floor of one?) and the deadline-day behaviour are unspecified. This
-> is the single highest-impact unset value in the selector: it decides what
-> happens on precisely the days that matter most.
+> fractional? floor of one?) and the deadline-day behaviour were unspecified, and
+> the manual add-commitment form's lack of a min-date guard (§11.2, T1) made this
+> live rather than theoretical: a commitment with `days_remaining < 0` can exist in
+> the database as soon as T1 ships, before the selector was built.
 >
-> **No longer theoretical.** The manual add-commitment form (§11.2, T1) has no
-> min-date guard on `deadline` — deliberately: a past deadline is a selection-time
-> problem, not an intake-time one, and blocking it at the form is exactly the kind
-> of thing that quietly narrows a decision that belongs to the scorer. This means
-> a commitment with `days_remaining ≤ 0` can exist in the database as soon as T1
-> ships, before the selector (T3) is built. Whoever builds T3 must decide this
-> before the selector runs against real data, not discover it from a crash.
+> **Decision: a commitment whose deadline has passed is expired and falls out of
+> scoring entirely.** Not a candidate, not a zero score, not clamped at a floor —
+> excluded before `urgency` is computed at all. The transition to
+> `status='expired'` (§8.4, D5) happens lazily, at selection time, since week one
+> has no rollover job (OPEN-7 territory) to do it ahead of a read. This is the
+> `backend/app/selection.py` implementation, not a proposal.
+>
+> **The deadline day itself is not past** — expiry fires at the rollover
+> *following* the deadline date (§8.4), so the day of the deadline is still a
+> candidate and still needs a `days_remaining` that isn't zero. Implemented as a
+> floor: `days_remaining = 1` on that one day, matching the whole-day convention
+> the §7.1 worked example already uses everywhere else. This floor is a build-time
+> necessity to make the function run, not a resolution of the fractional-day
+> question — if `days_remaining` should ever be fractional, this floor is the
+> line to revisit.
+>
+> **What stays open:** the whole-vs-fractional-days question in general (outside
+> the deadline day itself), and OPEN-5 (ties) below, which this implementation
+> only makes deterministic, not designed.
 
 > **OPEN-4 — exhausted effort without Tap B.** A commitment whose
 > `effort_remaining` reaches 0 scores 0 and will never be offered again — which
@@ -1053,8 +1066,9 @@ system-level ones.
 |---|---|---|
 | G1 | **No response body from any endpoint contains `effort_remaining`, `banked_effort_minutes`, or any value from which they can be subtracted out.** Asserted by walking serialised responses, not by reading route code | `decisions.md` §1, L4 |
 | G2 | No rendered view contains an owed, missed, remaining, or "x of y" figure — including the counted-commitment views when they arrive | `blueprint.md` §13, `copy-spec.md` §10 |
-| G3 | Card selection given a fixed state returns the fixed expected card. The §7.1 worked example is a fixture | `decisions.md` §2 |
-| G4 | Selection makes **no model call**. Asserted by a stubbed client that fails the test if invoked | `decisions.md` §2, §8 |
+| G3 | Card selection given a fixed state returns the fixed expected card. The §7.1 worked example is a fixture | `decisions.md` §2 — implemented, `backend/tests/test_selection.py` |
+| G4 | Selection makes **no model call**. Asserted by a stubbed client that fails the test if invoked | `decisions.md` §2, §8 — implemented as a source-scan test pending a stubbed-client fixture |
+| G16 | A commitment whose deadline has passed is excluded from selection candidates and transitioned to `status='expired'` with `expired_at` set, before scoring runs. A commitment due today is still a candidate | OPEN-2, resolved — `backend/app/selection.py` |
 | G5 | Copy is never generated on read. Opening a card issues **zero** model calls | `copy-spec.md` §3 |
 | G6 | A copy-model timeout stores fallback text and `copy_source='fallback'`, and the text never changes afterwards | `copy-spec.md` §3 |
 | G7 | `slot_boundary` is true for exactly one card per day — the first | `copy-spec.md` §3 |
@@ -1102,7 +1116,7 @@ documents; the rest are gaps this transcription hit.
 | # | Item | Blocks | Status |
 |---|---|---|---|
 | **OPEN-1** | Neglect-nudge multiplier value | Selector refinement, not week one | Deliberately unset (`decisions.md` §7). Do not guess before the selector runs on real data |
-| **OPEN-2** | `days_remaining` definition, and division by zero on the deadline day | **T3, week one** | Gap. Highest-impact unset value in the selector |
+| **OPEN-2** | `days_remaining` definition, and division by zero on the deadline day | ~~T3, week one~~ | **RESOLVED**, this session. Past-deadline commitments expire and fall out of scoring entirely; the deadline day itself floors `days_remaining` at 1. See §7.5 |
 | **OPEN-3** | Deadline-clause window `N` | T4 | Deliberately unset (`copy-spec.md` §12). Placeholder during the build; one line of copy, not a data shape |
 | **OPEN-4** | Commitment with `effort_remaining ≤ 0` and no Tap B | **T3, week one** | Gap. Currently reintroduces completion-by-exhaustion, which Tap B exists to prevent |
 | **OPEN-5** | Tie-break for equal scores | **T3, week one** | Gap. A deterministic selector needs a total order |
@@ -1121,11 +1135,11 @@ documents; the rest are gaps this transcription hit.
 | **OPEN-18** | The real Tuesday | Everything | Still unset. The oldest open item in the project (`claude/handoff.md`) |
 | **OPEN-19** | Whether the pre-commit is skippable | T5, week one | Gap. The column is nullable so a skip is representable; whether the UI offers one is unstated (`api.md` §5) |
 
-**Thirteen of these block week-one code:** OPEN-2, 4, 5, 6, 7, 8, 9, 11, 12, 13,
-14, 17, 19 — and five of them (2, 4, 5, 12, 13) land inside ticket T3 alone. That
-is the real shape of the tickets session. T3 is not one ticket's worth of
-decisions, and the four that are deliberately unset (1, 3, 15, 16) are not the
-ones holding anything up.
+**Twelve of these still block week-one code:** OPEN-4, 5, 6, 7, 8, 9, 11, 12, 13,
+14, 17, 19 — four of them (4, 5, 12, 13) land inside ticket T3 alone. OPEN-2 is
+resolved (see above) and no longer in this count. That is the real shape of the
+tickets session. T3 is not one ticket's worth of decisions, and the four that are
+deliberately unset (1, 3, 15, 16) are not the ones holding anything up.
 
 ---
 
