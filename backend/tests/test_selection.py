@@ -107,6 +107,55 @@ def test_past_deadline_is_expired_and_excluded(conn):
     assert row["expired_at"] is not None
 
 
+def test_low_scoring_expired_commitment_is_still_flipped(conn):
+    # The worry this guards against: if expiry were only applied to rows
+    # that survive some pre-filter (a WHERE clause on score, an ORDER BY +
+    # LIMIT), a commitment that would never have won anyway could stay
+    # 'open' forever and never get named as expired on a receipt. Here the
+    # overdue commitment is the *lowest*-scoring row in the table by a wide
+    # margin, surrounded by several higher scorers that would push it out
+    # of any top-N filter — it must still flip.
+    never_a_contender_id = insert_commitment(
+        conn, title="barely anything, ages ago", stakes="ordinary",
+        deadline=TODAY - timedelta(days=30), effort_minutes=1,
+    )
+    for i in range(5):
+        insert_commitment(
+            conn, title=f"big fire {i}", stakes="high",
+            deadline=TODAY + timedelta(days=1), effort_minutes=500,
+        )
+
+    select_commitment(conn, USER_ID, "UTC", today=TODAY)
+
+    row = conn.execute(
+        "SELECT status, expired_at FROM commitment WHERE id = ?",
+        (never_a_contender_id,),
+    ).fetchone()
+    assert row["status"] == "expired"
+    assert row["expired_at"] is not None
+
+
+def test_every_past_deadline_commitment_is_expired_in_one_call(conn):
+    expired_ids = [
+        insert_commitment(
+            conn, title=f"overdue {i}", stakes="ordinary",
+            deadline=TODAY - timedelta(days=i + 1), effort_minutes=10,
+        )
+        for i in range(4)
+    ]
+
+    select_commitment(conn, USER_ID, "UTC", today=TODAY)
+
+    rows = conn.execute(
+        "SELECT id, status FROM commitment WHERE id IN ({})".format(
+            ",".join("?" * len(expired_ids))
+        ),
+        expired_ids,
+    ).fetchall()
+    assert len(rows) == len(expired_ids)
+    assert all(row["status"] == "expired" for row in rows)
+
+
 def test_only_expired_commitment_yields_no_selection(conn):
     insert_commitment(
         conn, title="overdue", stakes="high",
