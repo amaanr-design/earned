@@ -145,3 +145,34 @@ open items block week-one code — mostly small arithmetic and lifecycle edges t
 design documents did not need to reach, but the selector cannot be written until
 the `days_remaining` and exhausted-effort ones are settled. Still no real
 Tuesday.
+
+## Last session
+
+**Date:** 2026-09-15
+**Did:** Built the commitment table + manual add-commitment form (T1 slice),
+the selection function (`app/selection.py`), and `GET /api/card`
+(`app/cards.py`) — slice sizing, quiet-reason responses, card persistence at
+offer time, deterministic fallback-only copy (no model call anywhere; verified
+by test). 27 tests passing. Resolved five open items, each checked against the
+user before implementation, all recorded in `spec/spec.md` with reasoning:
+- **OPEN-2** — past-deadline commitments expire and drop out of scoring
+  entirely; the deadline day itself floors `days_remaining` at 1.
+- **OPEN-12** — week-one slice size = `min(45, window, effort_remaining)`,
+  floored at 25, never rounded up. 45 is decisions.md's own calibration target.
+- **OPEN-13** — re-offer after a decline is immediate (no cooldown — the app
+  never pushes) and halves the prior declined duration for the same
+  commitment; under-floor yields `after_not_now` per the already-locked
+  AC-CARD-12.
+- **OPEN-8** — every card row for today's rollover day counts against the cap,
+  regardless of outcome.
+- **OPEN-14** — quiet-reason precedence: `cap_reached` checked first.
+
+Also settled an undocumented ambiguity (`spec/spec.md` D11): `everything_closed`
+requires a Tap B within the current Sunday-based week; otherwise `nothing_due`,
+so a returning user who never did intake isn't congratulated for an empty week.
+**Next session should:** Tap A/B and not-now endpoints (start, precommit,
+not-now, done, resolve — T5), then the receipt (T5). OPEN-9 (where Tap B is
+tapped) needs a UI answer, not just an endpoint, before that lands. OPEN-4 and
+OPEN-5 are the two open items left inside T3's original scope.
+**Open:** eight items still block week-one code — OPEN-4, 5, 6, 7, 9, 11, 17,
+19. Still no real Tuesday.
