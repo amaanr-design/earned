@@ -6,7 +6,9 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.cards import CardService
+from app.constants import PRECOMMIT_PROMPT
 from app.db import SCHEMA
+from app.errors import ApiError
 
 USER_ID = "u_test"
 TIMEZONE = "UTC"
@@ -292,6 +294,154 @@ def test_reoffer_does_not_cycle_to_a_different_commitment(service, conn):
     result = service.get_or_offer(USER_ID, TIMEZONE, EVENING_START, today=TODAY, now=at(14))
 
     assert result == {"card": None, "quiet": {"reason": "after_not_now"}}
+
+
+# --- start -----------------------------------------------------------------
+
+
+def test_start_marks_card_started_and_returns_precommit(service, conn):
+    insert_commitment(conn, effort_minutes=500)
+    offer = service.get_or_offer(USER_ID, TIMEZONE, EVENING_START, today=TODAY, now=at(14))
+    card_id = offer["card"]["id"]
+
+    result = service.start(card_id, USER_ID, now=at(14, 1))
+
+    assert result["card_id"] == card_id
+    assert result["started_at"] == "2026-09-20T14:01:00Z"
+    assert result["precommit"]["prompt"] == PRECOMMIT_PROMPT
+    assert result["precommit"]["options_minutes"] == sorted(set(result["precommit"]["options_minutes"]))
+
+    row = conn.execute("SELECT state, started_at FROM card WHERE id = ?", (card_id,)).fetchone()
+    assert row["state"] == "started"
+    assert row["started_at"] is not None
+
+
+def test_start_options_are_offer_plus_deltas_clamped_10_to_120(service, conn):
+    insert_commitment(conn, title="tiny", effort_minutes=25)
+    offer = service.get_or_offer(USER_ID, TIMEZONE, EVENING_START, today=TODAY, now=at(10))
+    assert offer["card"]["duration_minutes"] == 25
+
+    result = service.start(offer["card"]["id"], USER_ID, now=at(10, 1))
+
+    # 25 + (-15, 0, 15, 30) = 10, 25, 40, 55 -- floored at 10, no offer-floor clamp.
+    assert result["precommit"]["options_minutes"] == [10, 25, 40, 55]
+
+
+def test_start_on_already_started_card_returns_409_and_mutates_nothing(service, conn):
+    insert_commitment(conn, effort_minutes=500)
+    offer = service.get_or_offer(USER_ID, TIMEZONE, EVENING_START, today=TODAY, now=at(14))
+    card_id = offer["card"]["id"]
+    service.start(card_id, USER_ID, now=at(14, 1))
+    before = dict(conn.execute("SELECT * FROM card WHERE id = ?", (card_id,)).fetchone())
+
+    with pytest.raises(ApiError) as exc_info:
+        service.start(card_id, USER_ID, now=at(14, 2))
+    assert exc_info.value.status_code == 409
+
+    after = dict(conn.execute("SELECT * FROM card WHERE id = ?", (card_id,)).fetchone())
+    assert after == before
+
+
+def test_start_on_unknown_card_returns_404(service):
+    with pytest.raises(ApiError) as exc_info:
+        service.start("c_does_not_exist", USER_ID)
+    assert exc_info.value.status_code == 404
+
+
+# --- precommit ---------------------------------------------------------------
+
+
+def test_precommit_stores_minutes_without_touching_duration(service, conn):
+    insert_commitment(conn, effort_minutes=500)
+    offer = service.get_or_offer(USER_ID, TIMEZONE, EVENING_START, today=TODAY, now=at(14))
+    card_id = offer["card"]["id"]
+    service.start(card_id, USER_ID, now=at(14, 1))
+
+    result = service.precommit(card_id, USER_ID, 20)
+
+    assert result == {"card_id": card_id, "precommit_minutes": 20}
+    row = conn.execute("SELECT duration_minutes, precommit_minutes FROM card WHERE id = ?", (card_id,)).fetchone()
+    assert row["precommit_minutes"] == 20
+    assert row["duration_minutes"] == 45
+
+
+def test_precommit_before_start_returns_409(service, conn):
+    insert_commitment(conn, effort_minutes=500)
+    offer = service.get_or_offer(USER_ID, TIMEZONE, EVENING_START, today=TODAY, now=at(14))
+
+    with pytest.raises(ApiError) as exc_info:
+        service.precommit(offer["card"]["id"], USER_ID, 20)
+    assert exc_info.value.status_code == 409
+
+
+def test_second_precommit_on_same_card_returns_409(service, conn):
+    insert_commitment(conn, effort_minutes=500)
+    offer = service.get_or_offer(USER_ID, TIMEZONE, EVENING_START, today=TODAY, now=at(14))
+    card_id = offer["card"]["id"]
+    service.start(card_id, USER_ID, now=at(14, 1))
+    service.precommit(card_id, USER_ID, 20)
+
+    with pytest.raises(ApiError) as exc_info:
+        service.precommit(card_id, USER_ID, 30)
+    assert exc_info.value.status_code == 409
+
+
+# --- done (Tap A) ------------------------------------------------------------
+
+
+def test_done_after_start_computes_real_elapsed_and_banks_it(service, conn):
+    commitment_id = insert_commitment(conn, effort_minutes=500)
+    offer = service.get_or_offer(USER_ID, TIMEZONE, EVENING_START, today=TODAY, now=at(14))
+    card_id = offer["card"]["id"]
+    service.start(card_id, USER_ID, now=at(14, 0))
+
+    result = service.done(card_id, USER_ID, now=at(14, 25))
+
+    assert result == {"card_id": card_id, "outcome": "completed", "elapsed_minutes": 25}
+    card_row = conn.execute("SELECT state, outcome, elapsed_minutes FROM card WHERE id = ?", (card_id,)).fetchone()
+    assert card_row["state"] == "resolved"
+    assert card_row["outcome"] == "completed"
+    assert card_row["elapsed_minutes"] == 25
+    commitment_row = conn.execute(
+        "SELECT banked_effort_minutes FROM commitment WHERE id = ?", (commitment_id,)
+    ).fetchone()
+    assert commitment_row["banked_effort_minutes"] == 25
+
+
+def test_done_without_start_is_done_no_start_with_no_duration_or_banking(service, conn):
+    commitment_id = insert_commitment(conn, effort_minutes=500)
+    offer = service.get_or_offer(USER_ID, TIMEZONE, EVENING_START, today=TODAY, now=at(14))
+    card_id = offer["card"]["id"]
+
+    result = service.done(card_id, USER_ID, now=at(14, 10))
+
+    assert result == {"card_id": card_id, "outcome": "done_no_start", "elapsed_minutes": None}
+    commitment_row = conn.execute(
+        "SELECT banked_effort_minutes FROM commitment WHERE id = ?", (commitment_id,)
+    ).fetchone()
+    assert commitment_row["banked_effort_minutes"] == 0
+
+
+def test_done_does_not_close_the_commitment(service, conn):
+    commitment_id = insert_commitment(conn, effort_minutes=30)
+    offer = service.get_or_offer(USER_ID, TIMEZONE, EVENING_START, today=TODAY, now=at(14))
+    service.start(offer["card"]["id"], USER_ID, now=at(14, 0))
+
+    service.done(offer["card"]["id"], USER_ID, now=at(14, 30))
+
+    row = conn.execute("SELECT status FROM commitment WHERE id = ?", (commitment_id,)).fetchone()
+    assert row["status"] == "open"
+
+
+def test_done_on_already_resolved_card_returns_409(service, conn):
+    insert_commitment(conn, effort_minutes=500)
+    offer = service.get_or_offer(USER_ID, TIMEZONE, EVENING_START, today=TODAY, now=at(14))
+    card_id = offer["card"]["id"]
+    service.done(card_id, USER_ID, now=at(14, 5))
+
+    with pytest.raises(ApiError) as exc_info:
+        service.done(card_id, USER_ID, now=at(14, 6))
+    assert exc_info.value.status_code == 409
 
 
 def test_no_model_dependency_in_cards_module():

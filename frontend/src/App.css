@@ -42,3 +42,36 @@
 .form-confirmation {
   color: #1a7f37;
 }
+
+.card-screen {
+  width: 320px;
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+
+.card-copy {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+}
+
+.quiet-line {
+  font-size: 1.1rem;
+  color: #555;
+}
+
+.card-actions,
+.precommit-options {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.card-actions button,
+.precommit-options button {
+  padding: 0.5rem 0.9rem;
+  font-size: 1rem;
+}
+
+.precommit p {
+  margin-bottom: 0.5rem;
+}

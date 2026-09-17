@@ -1195,9 +1195,10 @@ documents; the rest are gaps this transcription hit.
 | **OPEN-17** | Whether `effort_minutes` (total) may be returned alongside anything from which remaining is reconstructable | **T1/T5, week one** | Gap. See `api.md` §2 — the conservative reading is specced there and marked |
 | **OPEN-18** | The real Tuesday | Everything | Still unset. The oldest open item in the project (`claude/handoff.md`) |
 | **OPEN-19** | Whether the pre-commit is skippable | T5, week one | Gap. The column is nullable so a skip is representable; whether the UI offers one is unstated (`api.md` §5) |
+| **OPEN-20** | The precommit option-generation function | ~~T5, week one~~ | **RESOLVED**, this session. `{offered-15, offered, offered+15, offered+30}`, deduped, clamped to `[10, 120]` — not the 25-minute offer floor, since a commitment estimate is allowed to be honest and low. See `api.md` §4, amended AC-START-5 |
 
 **Eight of these still block week-one code:** OPEN-4, 5, 6, 7, 9, 11, 17, 19.
-OPEN-2, 8, 12, 13 and 14 are resolved (see above) and no longer in this count.
+OPEN-2, 8, 12, 13, 14 and 20 are resolved (see above) and no longer in this count.
 Remaining T3 exposure is thinner than the tickets session found it — OPEN-4
 (exhausted effort with no Tap B) and OPEN-5 (ties) are what's left inside T3
 itself. The four that are deliberately unset (1, 3, 15, 16) are not the ones

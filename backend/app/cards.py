@@ -20,15 +20,37 @@ from zoneinfo import ZoneInfo
 
 from .constants import (
     DAILY_CARD_CAP,
+    PRECOMMIT_CEILING_MINUTES,
+    PRECOMMIT_DELTAS_MINUTES,
+    PRECOMMIT_FLOOR_MINUTES,
+    PRECOMMIT_PROMPT,
     SLICE_CEILING_MINUTES,
     SLICE_FLOOR_MINUTES,
     SLICE_STARTING_ANCHOR_MINUTES,
 )
+from .errors import ApiError
 from .selection import local_today, select_commitment
 
 
+def _iso(dt: datetime) -> str:
+    return dt.astimezone(ZoneInfo("UTC")).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
 def _utc_now_iso() -> str:
-    return datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return _iso(datetime.now(ZoneInfo("UTC")))
+
+
+def _precommit_options(duration_minutes: int) -> list[int]:
+    # spec/api.md §4, OPEN-20 — generated around the offer, floored at 10
+    # rather than the 25-minute offer floor: 25 is the minimum the app will
+    # *offer*, not the minimum the user may *commit* to. Clamping to the
+    # offer floor would make an honest low estimate unrepresentable and
+    # corrupt the estimate-vs-actual data. Confirmed with the user 2026-09.
+    candidates = {
+        min(PRECOMMIT_CEILING_MINUTES, max(PRECOMMIT_FLOOR_MINUTES, duration_minutes + delta))
+        for delta in PRECOMMIT_DELTAS_MINUTES
+    }
+    return sorted(candidates)
 
 
 def _minutes_until_evening(
@@ -257,6 +279,104 @@ class CardService:
             },
             "quiet": None,
         }
+
+    def start(self, card_id: str, user_id: str, now: datetime | None = None) -> dict:
+        """spec/api.md §4 — POST /api/cards/{id}/start."""
+        conn = self.conn
+        now = now or datetime.now(ZoneInfo("UTC"))
+
+        card = conn.execute(
+            "SELECT id, state, duration_minutes FROM card WHERE id = ? AND user_id = ?",
+            (card_id, user_id),
+        ).fetchone()
+        if card is None:
+            raise ApiError(404, "card_not_found", "No card with that id.")
+        if card["state"] != "offered":
+            # AC-START-2 — a card already started or resolved returns 409
+            # and mutates nothing.
+            raise ApiError(409, "card_not_offered", "This card cannot be started from its current state.")
+
+        started_at = _iso(now)
+        conn.execute(
+            "UPDATE card SET state = 'started', started_at = ? WHERE id = ?",
+            (started_at, card_id),
+        )
+        conn.commit()
+
+        return {
+            "card_id": card_id,
+            "started_at": started_at,
+            "precommit": {
+                "prompt": PRECOMMIT_PROMPT,
+                "options_minutes": _precommit_options(card["duration_minutes"]),
+            },
+        }
+
+    def precommit(self, card_id: str, user_id: str, minutes: int) -> dict:
+        """spec/api.md §5 — POST /api/cards/{id}/precommit."""
+        conn = self.conn
+
+        card = conn.execute(
+            "SELECT id, state, precommit_minutes FROM card WHERE id = ? AND user_id = ?",
+            (card_id, user_id),
+        ).fetchone()
+        if card is None:
+            raise ApiError(404, "card_not_found", "No card with that id.")
+        if card["state"] != "started":
+            # AC-PRE-2 — a pre-commit on a card that has not been started.
+            raise ApiError(409, "card_not_started", "Precommit requires a started card.")
+        if card["precommit_minutes"] is not None:
+            # AC-PRE-3 — a second pre-commit on the same card.
+            raise ApiError(409, "precommit_already_set", "This card already has a precommit.")
+
+        conn.execute(
+            "UPDATE card SET precommit_minutes = ? WHERE id = ?", (minutes, card_id)
+        )
+        conn.commit()
+
+        return {"card_id": card_id, "precommit_minutes": minutes}
+
+    def done(self, card_id: str, user_id: str, now: datetime | None = None) -> dict:
+        """spec/api.md §7 — POST /api/cards/{id}/done, Tap A."""
+        conn = self.conn
+        now = now or datetime.now(ZoneInfo("UTC"))
+
+        card = conn.execute(
+            "SELECT id, state, started_at, commitment_id FROM card WHERE id = ? AND user_id = ?",
+            (card_id, user_id),
+        ).fetchone()
+        if card is None:
+            raise ApiError(404, "card_not_found", "No card with that id.")
+        if card["state"] == "resolved":
+            raise ApiError(409, "card_already_resolved", "This card is already resolved.")
+
+        ended_at = _iso(now)
+        if card["state"] == "started":
+            started_dt = datetime.fromisoformat(card["started_at"].replace("Z", "+00:00"))
+            elapsed_minutes = round((now - started_dt).total_seconds() / 60)
+            outcome = "completed"
+            conn.execute(
+                "UPDATE commitment SET banked_effort_minutes = banked_effort_minutes + ? WHERE id = ?",
+                (elapsed_minutes, card["commitment_id"]),
+            )
+        else:
+            # AC-DONE-2 — Tap A without a start: work happened away from
+            # the app. No duration is ever invented (api.md §7), so nothing
+            # is banked — there is no real number to bank.
+            elapsed_minutes = None
+            outcome = "done_no_start"
+
+        conn.execute(
+            """
+            UPDATE card
+            SET state = 'resolved', outcome = ?, ended_at = ?, elapsed_minutes = ?
+            WHERE id = ?
+            """,
+            (outcome, ended_at, elapsed_minutes, card_id),
+        )
+        conn.commit()
+
+        return {"card_id": card_id, "outcome": outcome, "elapsed_minutes": elapsed_minutes}
 
     def _count_cards_today(self, user_id: str, today: date) -> int:
         return _count_cards_today(self.conn, user_id, today)

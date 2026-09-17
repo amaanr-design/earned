@@ -165,7 +165,7 @@ Records the Start tap and returns the pre-commit options.
   "started_at": "2026-08-20T17:13:40Z",
   "precommit": {
     "prompt": "How long are you giving it?",
-    "options_minutes": [20, 30, 45, 60]
+    "options_minutes": [30, 45, 60, 75]
   }
 }
 ```
@@ -178,8 +178,16 @@ it?"* asks for a commitment without questioning one. *"How long are you actually
 going for?"* and *"How long, really?"* both fail: they doubt the answer before it
 is given (`copy-spec.md` §6).
 
-> **OPEN-12** governs the option set as well as the slice, since the options are
+> **OPEN-12** governed the option set as well as the slice, since the options are
 > generated around a slice whose sizing function is unwritten.
+>
+> **OPEN-20 — the option-generation function itself. [RESOLVED.]** Neither
+> source named a rule for turning an offered duration into a set of tappable
+> options, and this doc's own illustrative example (`[20, 30, 45, 60]` for a
+> 45-minute offer) silently violated its own AC-START-5, since 20 falls under
+> the 25-minute offer floor. **Decision: `{offered-15, offered, offered+15,
+> offered+30}`, deduped, clamped to `[10, 120]`** — see the amended AC-START-5
+> above. Confirmed with the user 2026-09.
 
 ### Acceptance criteria
 
@@ -189,7 +197,7 @@ is given (`copy-spec.md` §6).
 | AC-START-2 | Starting a card already in `started` or `resolved` returns 409 and mutates nothing |
 | AC-START-3 | The prompt string equals `copy-spec.md` case 15 exactly |
 | AC-START-4 | Options are produced by the backend; a stubbed model client is never invoked |
-| AC-START-5 | Every option is between 25 and 120 inclusive |
+| AC-START-5 | **Amended, OPEN-20.** Every option is between 10 and 120 inclusive — not 25. 25 is the minimum the app will *offer*, not the minimum the user may *commit* to; clamping precommit options to the offer floor would make an honest low estimate unrepresentable and corrupt the estimate-vs-actual data (`copy-spec.md` §6's "three numbers, not two"). Options are `{offered-15, offered, offered+15, offered+30}`, deduped, clamped to `[10, 120]`. Confirmed with the user 2026-09; implemented in `backend/app/cards.py` |
 
 ---
 

@@ -16,6 +16,18 @@ DAILY_CARD_CAP = 3
 # starting at the ceiling and walking down. Confirmed with the user 2026-09.
 SLICE_STARTING_ANCHOR_MINUTES = 45
 
+# spec/api.md §4, OPEN-20 — precommit options are generated around the
+# offered duration, not clamped to the offer floor: 25 is the minimum the
+# app will *offer*, not the minimum the user is allowed to *commit* to.
+# Clamping here would corrupt the estimate-vs-actual data. Confirmed with
+# the user 2026-09.
+PRECOMMIT_DELTAS_MINUTES = (-15, 0, 15, 30)
+PRECOMMIT_FLOOR_MINUTES = 10
+PRECOMMIT_CEILING_MINUTES = 120
+
+# copy-spec.md §6, case 15 — fixed wording, not a model output.
+PRECOMMIT_PROMPT = "How long are you giving it?"
+
 QUIET_REASONS = (
     "evening_started",
     "window_under_floor",
