@@ -176,3 +176,47 @@ tapped) needs a UI answer, not just an endpoint, before that lands. OPEN-4 and
 OPEN-5 are the two open items left inside T3's original scope.
 **Open:** eight items still block week-one code — OPEN-4, 5, 6, 7, 9, 11, 17,
 19. Still no real Tuesday.
+
+## Last session
+
+**Date:** 2026-09-16
+**Did:** Built the card screen (`frontend/src/CardScreen.jsx`) — calls
+`GET /api/card`, renders the card's `copy_text` or the matching quiet line
+(`frontend/src/quietReasons.js`, byte-identical to `copy-spec.md` §5), Start,
+the precommit chooser, and Done (Tap A). Start and Done didn't exist on the
+backend yet, so built those too, plus precommit, since the screen needed all
+three end to end:
+- `POST /api/cards/{id}/start`, `POST /api/cards/{id}/precommit`,
+  `POST /api/cards/{id}/done` (`backend/app/cards.py`, `backend/app/main.py`)
+- `backend/app/errors.py` — shared `ApiError` for the `{error:{code,message,field}}`
+  shape, wired as a FastAPI exception handler
+- 15 new tests in `backend/tests/test_cards.py`; 38 passing total
+
+Resolved **OPEN-20** (new): the precommit option-generation function was
+unwritten, and the spec's own example (`[20,30,45,60]` for a 45-min offer)
+silently broke its own AC-START-5. Checked with the user: options are
+`{offered-15, offered, offered+15, offered+30}`, deduped, clamped to
+`[10, 120]` — **not** the 25-minute offer floor, since a commitment estimate
+is allowed to be honestly lower than what the app would offer; clamping to
+the offer floor would corrupt the estimate-vs-actual data. AC-START-5 amended
+in `spec/api.md`, OPEN-20 added to `spec/spec.md` §15.
+
+Also resolved, by extension of the already-locked "no duration is ever
+invented" rule rather than by fresh guess: `done_no_start` banks nothing,
+since there is no real number to bank.
+
+**Verification:** full pytest suite, all three endpoints over real HTTP
+(curl), and the Start→precommit→Done sequence via direct service calls.
+Browser-verified the quiet-line path and the Done/Tap A path end to end
+(started card → Done → banks elapsed effort → refetches to the correct
+quiet line). **Could not** browser-verify the initial "offered card → Start
+button" screen live — the sandbox's real clock was past midnight, and the
+app's own rollover-day logic correctly treats that as evening-already-started
+for any `evening_start`, so a genuinely offered card wasn't reachable through
+the real endpoint at test time. Covered by the backend test suite instead.
+**Next session should:** Not-now endpoint and button (T5) — the card screen
+currently only has Start and Done, per this session's explicit scope. Then
+`resolve` (the `abandoned_unknown` ask) and the receipt (T5). OPEN-9 (where
+Tap B is tapped) still needs a UI answer.
+**Open:** OPEN-4, 5, 6, 7, 9, 11, 17, 19 still block week-one code. OPEN-20 is
+newly resolved and no longer in that count. Still no real Tuesday.
