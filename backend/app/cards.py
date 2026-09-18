@@ -378,6 +378,37 @@ class CardService:
 
         return {"card_id": card_id, "outcome": outcome, "elapsed_minutes": elapsed_minutes}
 
+    def not_now(self, card_id: str, user_id: str, now: datetime | None = None) -> dict:
+        """spec/api.md §6 — POST /api/cards/{id}/not-now.
+
+        Declining does not end the day: the same commitment can return in a
+        smaller slice later (decisions.md §4), via the halving logic in
+        get_or_offer/_latest_not_now above. No follow-up copy, no
+        acknowledgement token, no count (AC-NOTNOW-2) — the response and the
+        row it writes are as bare as the offer/started rows are elsewhere.
+        """
+        conn = self.conn
+        now = now or datetime.now(ZoneInfo("UTC"))
+
+        card = conn.execute(
+            "SELECT id, state FROM card WHERE id = ? AND user_id = ?",
+            (card_id, user_id),
+        ).fetchone()
+        if card is None:
+            raise ApiError(404, "card_not_found", "No card with that id.")
+        if card["state"] != "offered":
+            # Mirrors AC-START-2's shape: declining only makes sense before
+            # a session has started.
+            raise ApiError(409, "card_not_offered", "This card cannot be declined from its current state.")
+
+        conn.execute(
+            "UPDATE card SET state = 'resolved', outcome = 'not_now', resolved_at = ? WHERE id = ?",
+            (_iso(now), card_id),
+        )
+        conn.commit()
+
+        return {"card_id": card_id, "outcome": "not_now"}
+
     def _count_cards_today(self, user_id: str, today: date) -> int:
         return _count_cards_today(self.conn, user_id, today)
 

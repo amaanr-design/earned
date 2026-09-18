@@ -95,6 +95,19 @@ function CardScreen() {
     }
   }
 
+  async function handleNotNow() {
+    setBusy(true)
+    setError(null)
+    try {
+      await postAction('not-now')
+      await loadCard()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (status === 'loading') {
     return <section className="card-screen" aria-busy="true" />
   }
@@ -137,6 +150,11 @@ function CardScreen() {
           {card.state === 'offered' && (
             <button disabled={busy} onClick={handleStart}>
               Start
+            </button>
+          )}
+          {card.state === 'offered' && (
+            <button disabled={busy} onClick={handleNotNow}>
+              Not now
             </button>
           )}
           <button disabled={busy} onClick={handleDone}>

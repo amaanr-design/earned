@@ -444,6 +444,58 @@ def test_done_on_already_resolved_card_returns_409(service, conn):
     assert exc_info.value.status_code == 409
 
 
+# --- not-now ------------------------------------------------------------
+
+
+def test_not_now_resolves_card_and_returns_bare_outcome(service, conn):
+    commitment_id = insert_commitment(conn, effort_minutes=500)
+    offer = service.get_or_offer(USER_ID, TIMEZONE, EVENING_START, today=TODAY, now=at(14))
+    card_id = offer["card"]["id"]
+
+    result = service.not_now(card_id, USER_ID, now=at(14, 1))
+
+    assert result == {"card_id": card_id, "outcome": "not_now"}
+    row = conn.execute("SELECT state, outcome, duration_minutes FROM card WHERE id = ?", (card_id,)).fetchone()
+    assert row["state"] == "resolved"
+    assert row["outcome"] == "not_now"
+    assert row["duration_minutes"] == 45  # AC-NOTNOW-1 — no duration is written/changed
+    commitment_row = conn.execute("SELECT status FROM commitment WHERE id = ?", (commitment_id,)).fetchone()
+    assert commitment_row["status"] == "open"  # AC-NOTNOW-3
+
+
+def test_not_now_feeds_the_reoffer_halving_for_the_same_commitment(service, conn):
+    # A fresh offer is always anchored at <=45 (SLICE_STARTING_ANCHOR_MINUTES),
+    # so 45 // 2 = 22 falls under the 25-minute floor -- this exercises the
+    # same exhausted-after-one-decline path as
+    # test_reoffer_below_floor_yields_after_not_now_per_ac_card_12, but
+    # driven through the not_now() method rather than a seeded row.
+    insert_commitment(conn, title="the eval", effort_minutes=500)
+    first = service.get_or_offer(USER_ID, TIMEZONE, EVENING_START, today=TODAY, now=at(14))
+    service.not_now(first["card"]["id"], USER_ID, now=at(14, 1))
+
+    second = service.get_or_offer(USER_ID, TIMEZONE, EVENING_START, today=TODAY, now=at(14, 2))
+
+    # AC-NOTNOW-4 — no cycling to a different commitment.
+    assert second == {"card": None, "quiet": {"reason": "after_not_now"}}
+
+
+def test_not_now_on_started_card_returns_409(service, conn):
+    insert_commitment(conn, effort_minutes=500)
+    offer = service.get_or_offer(USER_ID, TIMEZONE, EVENING_START, today=TODAY, now=at(14))
+    card_id = offer["card"]["id"]
+    service.start(card_id, USER_ID, now=at(14, 1))
+
+    with pytest.raises(ApiError) as exc_info:
+        service.not_now(card_id, USER_ID, now=at(14, 2))
+    assert exc_info.value.status_code == 409
+
+
+def test_not_now_on_unknown_card_returns_404(service):
+    with pytest.raises(ApiError) as exc_info:
+        service.not_now("c_does_not_exist", USER_ID)
+    assert exc_info.value.status_code == 404
+
+
 def test_no_model_dependency_in_cards_module():
     import app.cards as cards_module
 

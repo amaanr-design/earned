@@ -154,3 +154,12 @@ async def precommit_card(card_id: str, payload: PrecommitRequest, services: DepC
 async def done_card(card_id: str, services: DepContainer):
     card_service = await services.aget(CardService)
     return card_service.done(card_id, EARNED_USER_ID)
+
+
+# spec/api.md §6 — POST /api/cards/{id}/not-now
+
+
+@app.post("/api/cards/{card_id}/not-now")
+async def not_now_card(card_id: str, services: DepContainer):
+    card_service = await services.aget(CardService)
+    return card_service.not_now(card_id, EARNED_USER_ID)
