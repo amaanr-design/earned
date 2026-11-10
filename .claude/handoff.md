@@ -250,13 +250,35 @@ precache holds 10 shell paths and zero `/api` entries. On reload the document,
 JS and CSS came from the worker with 0 bytes transferred, while `/api/card` went
 to the network. No console errors. I didn't open the DevTools installability
 panel itself.
-**Not done, deliberately:** no deploy (backend host undecided); no offline
-behaviour for cards (open design question). **Known gap for deploy:** the
-frontend calls absolute `/api/...` paths, which resolve against the origin. On
-Pages those requests would reach github.io, not the backend. An API base URL
-has to be decided together with the backend host.
+**Not done, deliberately:** no deploy and no offline behaviour for cards —
+both wait on the open questions below.
+
+**Known gap for deploy: API base URL.** `frontend/src/CardScreen.jsx` and
+`AddCommitmentForm.jsx` call `fetch('/api/...')`. A leading `/` resolves
+against the page's domain, not the Vite `base`, so on GitHub Pages these
+requests would go to `amaanr-design.github.io/api/...` and fail. Dev and
+preview hide this because both proxy `/api` to `localhost:8001`. The fix needs
+a configurable API base URL (e.g. a `VITE_` env var) that the fetch calls are
+prefixed with. Two backend-side changes come with it: `CORSMiddleware` in
+`backend/app/main.py` allows only `http://localhost:5173` and must add the
+Pages origin, and the backend must be served over HTTPS because Pages is
+HTTPS. Blocked on the hosting question below; don't pick a URL before that's
+answered.
+
+**Open questions (not yet numbered in `spec/spec.md` §15; don't resolve by
+guessing):**
+- **Backend hosting:** Where does the FastAPI + SQLite backend run so the
+  installed app on a phone can reach it over HTTPS? Does the SQLite file need
+  to survive a redeploy, and if so, where does it live? The answers set the
+  API base URL and the CORS origin.
+- **Offline card behaviour:** When the installed app opens without a network
+  connection, what should the card screen show, and what happens if Start,
+  Done or Not now is tapped while offline? Cards are written to the database
+  when offered and every tap is a server write, so this is a card-lifecycle
+  decision, not a caching setting. Until it's answered, the service worker
+  caches only the app shell, never API responses.
+
 **Next session should:** `resolve` (the `abandoned_unknown` ask) and the
 receipt (T5). OPEN-9 (where Tap B is tapped) still needs a UI answer.
-**Open:** OPEN-4, 5, 6, 7, 9, 11, 17, 19 still block week-one code. Offline
-card behaviour and backend hosting are new, undecided, and not yet numbered in
-`spec/spec.md` §15. Still no real Tuesday.
+**Open:** OPEN-4, 5, 6, 7, 9, 11, 17, 19 still block week-one code, plus the
+two new questions above. Still no real Tuesday.
