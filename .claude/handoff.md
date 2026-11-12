@@ -282,3 +282,40 @@ guessing):**
 receipt (T5). OPEN-9 (where Tap B is tapped) still needs a UI answer.
 **Open:** OPEN-4, 5, 6, 7, 9, 11, 17, 19 still block week-one code, plus the
 two new questions above. Still no real Tuesday.
+
+## Last session
+
+**Date:** 2026-11-11
+**Did:** Deploy prep — code only; the user runs the dashboards and deploy
+commands. Hosting answered: backend on Render free tier, frontend on GitHub
+Pages (repo now public). Closes the handoff's "API base URL" gap.
+- `frontend/src/api.js` — `apiUrl(path)` prefixes `VITE_API_BASE_URL`
+  (trailing slash stripped). Unset = relative paths, so dev/preview still go
+  through the Vite proxy. All three `fetch` calls in `CardScreen.jsx` and
+  `AddCommitmentForm.jsx` use it. **Inlined at build time** — the Pages build
+  must run with it set; changing it means rebuilding.
+- `backend/app/config.py` — `CORS_ORIGINS` env var, comma-separated, default
+  `http://localhost:5173`; `main.py` uses it. On Render:
+  `https://amaanr-design.github.io` (origin only, no `/earned/`).
+- Render (no config file; dashboard values): root dir `backend`, build
+  `uv sync --locked --no-dev`, start
+  `uv run --no-sync uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+  Python 3.12 from `backend/.python-version`. `run.py` stays dev-only
+  (port 8001, reload).
+
+**Verification:** 42 tests pass. Ran the exact start command locally with
+`PORT`/`CORS_ORIGINS` set: binds to `$PORT`; preflight from the Pages origin
+and localhost:5173 allowed, an unlisted origin refused (400). Builds with and
+without `VITE_API_BASE_URL` inline the right base. `npm run dev` in the browser
+still hits `/api/card` through the proxy with no console errors. Not verified:
+the real Render or Pages deploy.
+
+**Persistence (accepted, flagged):** free-tier disk is wiped on restart,
+redeploy and idle spin-down (~15 min). `earned.db` lives next to the code;
+`_ensure_default_user` recreates the user as `UTC`/`20:00` after each wipe;
+cap counts, not-now halving, cards, `quiet_render` and estimate-vs-actual data
+all reset. OPEN-16's baseline can't accumulate on this host.
+**Next session should:** confirm the live deploy, then `resolve` and the
+receipt (T5). OPEN-9 still needs a UI answer.
+**Open:** OPEN-4, 5, 6, 7, 9, 11, 17, 19; offline card behaviour; durable
+storage for the DB. Still no real Tuesday.

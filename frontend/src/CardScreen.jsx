@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { apiUrl } from './api'
 import { QUIET_REASON_TEXT } from './quietReasons'
 
 // spec/api.md §3-§7 — the week-one card screen: GET /api/card, then Start
@@ -18,7 +19,7 @@ function CardScreen() {
     setError(null)
     setPrecommit(null)
     try {
-      const res = await fetch('/api/card')
+      const res = await fetch(apiUrl('/api/card'))
       const body = await res.json()
       if (!res.ok) {
         setError(body.error?.message ?? 'Could not load the card.')
@@ -43,7 +44,7 @@ function CardScreen() {
   }, [])
 
   async function postAction(path, payload) {
-    const res = await fetch(`/api/cards/${card.id}/${path}`, {
+    const res = await fetch(apiUrl(`/api/cards/${card.id}/${path}`), {
       method: 'POST',
       headers: payload ? { 'Content-Type': 'application/json' } : undefined,
       body: payload ? JSON.stringify(payload) : undefined,

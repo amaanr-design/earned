@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from svcs.fastapi import DepContainer, lifespan as svcs_lifespan
 
 from .cards import CardService, card_service_factory
-from .config import EARNED_USER_ID
+from .config import CORS_ORIGINS, EARNED_USER_ID
 from .constants import CATEGORIES, STAKES
 from .db import make_connection_factory
 from .errors import ApiError
@@ -29,7 +29,7 @@ app = FastAPI(title="Earned API", lifespan=svcs_lifespan(register_services))
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )

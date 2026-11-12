@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { apiUrl } from './api'
 
 const CATEGORIES = ['coursework', 'marc_lessons', 'build']
 const STAKES = ['high', 'ordinary']
@@ -28,7 +29,7 @@ function AddCommitmentForm() {
     setSubmitting(true)
 
     try {
-      const res = await fetch('/api/commitments', {
+      const res = await fetch(apiUrl('/api/commitments'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
